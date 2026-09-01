@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Group from "../models/group.model.js";
 import Poll from "../models/poll.model.js";
 import { io } from "../lib/socket.js";
+import { computePollResults } from "../lib/pollResults.js";
 
 // Helper — check if user is a member of the group
 const isGroupMember = (group, userId) =>
@@ -93,6 +94,39 @@ export const getGroupPolls = async (req, res) => {
     res.status(200).json(polls);
   } catch (error) {
     console.error("Get group polls error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// GET /api/polls/:pollId
+export const getPollById = async (req, res) => {
+  try {
+    const { pollId } = req.params;
+    const userId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(pollId)) {
+      return res.status(400).json({ message: "Invalid poll ID" });
+    }
+
+    const poll = await Poll.findById(pollId).populate(
+      "creatorId",
+      "fullName profilePic",
+    );
+    if (!poll) {
+      return res.status(404).json({ message: "Poll not found" });
+    }
+
+    const group = await Group.findById(poll.groupId);
+    if (!group || !isGroupMember(group, userId)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    res.status(200).json({
+      ...poll.toObject(),
+      results: computePollResults(poll),
+    });
+  } catch (error) {
+    console.error("Get poll by id error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
